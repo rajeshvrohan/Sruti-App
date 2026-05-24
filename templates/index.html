@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carnatic Music Analyzer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="container">
+        <h1>Carnatic Music Analyzer</h1>
+        <p class="subtitle">Upload a recording to identify ragas, tala, and musical characteristics.</p>
+
+        <form id="upload-form">
+            <div class="file-area" id="file-area">
+                <input type="file" id="audio-input" name="audio" accept=".wav,.mp3" required>
+                <label for="audio-input" class="file-label">
+                    <span class="file-icon">&#9835;</span>
+                    <span id="file-name-display">Choose a WAV or MP3 file</span>
+                </label>
+            </div>
+
+            <button type="submit" id="submit-btn">Analyze</button>
+        </form>
+
+        <div id="loading" class="hidden">
+            <div class="spinner"></div>
+            <p>Analyzing your recording&hellip;</p>
+        </div>
+
+        <section id="results" class="hidden">
+            <h2>Analysis</h2>
+            <div id="results-content"></div>
+        </section>
+
+        <div id="error-message" class="hidden error-box"></div>
+    </main>
+
+    <script>
+        const form = document.getElementById('upload-form');
+        const input = document.getElementById('audio-input');
+        const fileNameDisplay = document.getElementById('file-name-display');
+        const loading = document.getElementById('loading');
+        const results = document.getElementById('results');
+        const resultsContent = document.getElementById('results-content');
+        const errorMessage = document.getElementById('error-message');
+        const submitBtn = document.getElementById('submit-btn');
+
+        input.addEventListener('change', () => {
+            fileNameDisplay.textContent = input.files[0]
+                ? input.files[0].name
+                : 'Choose a WAV or MP3 file';
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const file = input.files[0];
+            if (!file) return;
+
+            // Reset state
+            results.classList.add('hidden');
+            errorMessage.classList.add('hidden');
+            loading.classList.remove('hidden');
+            submitBtn.disabled = true;
+
+            const formData = new FormData();
+            formData.append('audio', file);
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'An unexpected error occurred.');
+                }
+
+                renderResults(data);
+                results.classList.remove('hidden');
+            } catch (err) {
+                errorMessage.textContent = err.message;
+                errorMessage.classList.remove('hidden');
+            } finally {
+                loading.classList.add('hidden');
+                submitBtn.disabled = false;
+            }
+        });
+
+        function renderResults(data) {
+            resultsContent.innerHTML = '';
+
+            if (data.analysis) {
+                const p = document.createElement('p');
+                p.className = 'analysis-text';
+                p.textContent = data.analysis;
+                resultsContent.appendChild(p);
+            }
+
+            if (data.message) {
+                const p = document.createElement('p');
+                p.className = 'analysis-text';
+                p.textContent = data.message;
+                resultsContent.appendChild(p);
+            }
+
+            if (data.filename) {
+                const tag = document.createElement('p');
+                tag.className = 'file-tag';
+                tag.textContent = 'File: ' + data.filename;
+                resultsContent.appendChild(tag);
+            }
+
+            if (data.features) {
+                const pre = document.createElement('pre');
+                pre.className = 'features-block';
+                pre.textContent = JSON.stringify(data.features, null, 2);
+                resultsContent.appendChild(pre);
+            }
+        }
+    </script>
+</body>
+</html>
