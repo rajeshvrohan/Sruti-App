@@ -3,13 +3,17 @@ from flask import Flask, request, jsonify, render_template
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
+from audio_processor import AudioProcessor
+
 load_dotenv()
 
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = "uploads"
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB limit
 
-ALLOWED_EXTENSIONS = {"wav", "mp3"}
+ALLOWED_EXTENSIONS = {"wav", "mp3", "m4a"}
+
+processor = AudioProcessor()
 
 
 def allowed_file(filename):
@@ -32,13 +36,24 @@ def analyze():
         return jsonify({"error": "No file selected"}), 400
 
     if not allowed_file(file.filename):
-        return jsonify({"error": "Only WAV and MP3 files are accepted"}), 400
+        return jsonify({"error": "Only WAV, MP3, and M4A files are accepted"}), 400
 
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     file.save(filepath)
 
-    return jsonify({"message": "File received successfully", "filename": filename})
+    try:
+        result = processor.extract_swaras(filepath)
+    except Exception as exc:
+        return jsonify({"error": f"Could not analyze audio: {exc}"}), 500
+
+    return jsonify(
+        {
+            "filename": filename,
+            "swaras": result["swaras"],
+            "raagas": result["raagas"],
+        }
+    )
 
 
 if __name__ == "__main__":

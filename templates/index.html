@@ -13,10 +13,10 @@
 
         <form id="upload-form">
             <div class="file-area" id="file-area">
-                <input type="file" id="audio-input" name="audio" accept=".wav,.mp3" required>
+                <input type="file" id="audio-input" name="audio" accept=".wav,.mp3,.m4a" required>
                 <label for="audio-input" class="file-label">
                     <span class="file-icon">&#9835;</span>
-                    <span id="file-name-display">Choose a WAV or MP3 file</span>
+                    <span id="file-name-display">Choose a WAV, MP3, or M4A file</span>
                 </label>
             </div>
 
@@ -49,7 +49,7 @@
         input.addEventListener('change', () => {
             fileNameDisplay.textContent = input.files[0]
                 ? input.files[0].name
-                : 'Choose a WAV or MP3 file';
+                : 'Choose a WAV, MP3, or M4A file';
         });
 
         form.addEventListener('submit', async (e) => {
@@ -93,18 +93,29 @@
         function renderResults(data) {
             resultsContent.innerHTML = '';
 
-            if (data.analysis) {
+            if (data.swaras) {
                 const p = document.createElement('p');
                 p.className = 'analysis-text';
-                p.textContent = data.analysis;
+                p.textContent = data.swaras.length
+                    ? 'Detected swaras: ' + data.swaras.join(', ')
+                    : 'No swaras detected.';
                 resultsContent.appendChild(p);
             }
 
-            if (data.message) {
-                const p = document.createElement('p');
-                p.className = 'analysis-text';
-                p.textContent = data.message;
-                resultsContent.appendChild(p);
+            if (data.raagas && data.raagas.length) {
+                const h3 = document.createElement('h3');
+                h3.textContent = 'Top raaga matches';
+                resultsContent.appendChild(h3);
+
+                const ul = document.createElement('ul');
+                ul.className = 'raaga-list';
+                data.raagas.forEach((raaga) => {
+                    const li = document.createElement('li');
+                    li.textContent =
+                        raaga.name + ' — ' + raaga.match_percentage.toFixed(1) + '%';
+                    ul.appendChild(li);
+                });
+                resultsContent.appendChild(ul);
             }
 
             if (data.filename) {
@@ -112,13 +123,6 @@
                 tag.className = 'file-tag';
                 tag.textContent = 'File: ' + data.filename;
                 resultsContent.appendChild(tag);
-            }
-
-            if (data.features) {
-                const pre = document.createElement('pre');
-                pre.className = 'features-block';
-                pre.textContent = JSON.stringify(data.features, null, 2);
-                resultsContent.appendChild(pre);
             }
         }
     </script>
