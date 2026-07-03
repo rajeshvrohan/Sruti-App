@@ -2,6 +2,7 @@ flask
 gunicorn
 flask-limiter[redis]
 librosa
+soundfile
 anthropic
 python-dotenv
 imageio-ffmpeg

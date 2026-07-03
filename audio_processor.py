@@ -5,6 +5,7 @@ import tempfile
 
 import librosa
 import numpy as np
+import soundfile as sf
 
 try:
     import imageio_ffmpeg
@@ -31,6 +32,12 @@ VOICED_PROB_MIN = 0.5
 # Extensions librosa/soundfile can decode directly. Anything else (MP3, M4A,
 # MP4, ...) is first transcoded to WAV with the bundled ffmpeg binary.
 NATIVE_EXTENSIONS = {".wav"}
+
+# Sample rate the analysis runs at. This matches the historical default of
+# librosa.load (22050 Hz); the pyin frame rate — and therefore the
+# min_segment_frames note-length threshold — depends on it, so keep it fixed
+# regardless of the source file's native rate.
+ANALYSIS_SAMPLE_RATE = 22050
 
 # Reject inputs longer than this before spending CPU transcoding them. An
 # overlong clip is what pins the ffmpeg subprocess long enough to trip the
@@ -128,6 +135,26 @@ def _silent_remove(path: str) -> None:
         pass
 
 
+def _load_wav(filepath: str) -> tuple[np.ndarray, int]:
+    """Load a WAV file as a mono float32 signal using soundfile.
+
+    soundfile reads via libsndfile, which has no ffmpeg/audioread dependency,
+    so this never spawns a subprocess (unlike ``librosa.load``'s audioread
+    fallback). Multi-channel audio is downmixed to mono and the signal is
+    resampled to :data:`ANALYSIS_SAMPLE_RATE`, matching the default behaviour
+    of ``librosa.load`` so downstream pitch analysis is unchanged.
+    """
+    y, sr = sf.read(filepath, dtype="float32", always_2d=False)
+    if y.ndim > 1:
+        y = y.mean(axis=1)
+    if sr != ANALYSIS_SAMPLE_RATE:
+        # librosa.resample is pure numpy/soxr — no ffmpeg subprocess.
+        y = librosa.resample(y, orig_sr=sr, target_sr=ANALYSIS_SAMPLE_RATE)
+        sr = ANALYSIS_SAMPLE_RATE
+    # pyin and the librosa feature extractors want a contiguous float32 array.
+    return np.ascontiguousarray(y, dtype=np.float32), int(sr)
+
+
 class AudioProcessor:
     def get_duration(self, filepath: str) -> float:
         """Return the duration of an audio file in seconds.
@@ -148,19 +175,40 @@ class AudioProcessor:
             if temp_audio:
                 _silent_remove(temp_audio)
 
+    def _load_audio(self, filepath: str) -> tuple[np.ndarray, int]:
+        """Load any supported input as a mono float32 signal via soundfile.
+
+        Native WAV is read directly with soundfile (no ffmpeg). Non-native
+        inputs (MP3, M4A, MP4) are transcoded to a temporary WAV with the
+        bundled ffmpeg binary first, then read with soundfile. This keeps the
+        only ffmpeg call inside the timeout-guarded :func:`_transcode_to_wav`,
+        so librosa/audioread never spawns ffmpeg during analysis.
+        """
+        analysis_path = filepath
+        temp_audio = None
+        if os.path.splitext(filepath)[1].lower() not in NATIVE_EXTENSIONS:
+            analysis_path = temp_audio = _transcode_to_wav(filepath)
+        try:
+            return _load_wav(analysis_path)
+        finally:
+            if temp_audio:
+                _silent_remove(temp_audio)
+
     def extract_features(self, filepath: str) -> dict:
-        y, sr = librosa.load(filepath)
+        y, sr = self._load_audio(filepath)
 
         pitches, magnitudes = librosa.piptrack(y=y, sr=sr)
         dominant_pitches = self._get_dominant_pitches(pitches, magnitudes)
 
         tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+        # librosa 0.11 returns tempo as a shape-(1,) array; unwrap to a scalar.
+        tempo = float(np.ravel(tempo)[0])
         spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
         mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
 
         return {
             "duration": float(librosa.get_duration(y=y, sr=sr)),
-            "tempo": float(tempo),
+            "tempo": tempo,
             "sample_rate": int(sr),
             "dominant_pitches": dominant_pitches,
             "spectral_centroid_mean": float(np.mean(spectral_centroid)),
@@ -297,7 +345,7 @@ class AudioProcessor:
         printed — including the unvoiced/low-confidence frames later steps drop —
         so the full pitch track is visible.
         """
-        y, sr = librosa.load(filepath)
+        y, sr = self._load_audio(filepath)
 
         f0, _voiced_flag, voiced_prob = librosa.pyin(
             y, fmin=FREQ_MIN, fmax=FREQ_MAX, sr=sr
