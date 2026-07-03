@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import tempfile
 
@@ -31,16 +32,64 @@ VOICED_PROB_MIN = 0.5
 # MP4, ...) is first transcoded to WAV with the bundled ffmpeg binary.
 NATIVE_EXTENSIONS = {".wav"}
 
+# Reject inputs longer than this before spending CPU transcoding them. An
+# overlong clip is what pins the ffmpeg subprocess long enough to trip the
+# gunicorn worker timeout on a constrained instance.
+MAX_TRANSCODE_DURATION_SECONDS = 30 * 60  # 30 minutes
+
+# Hard subprocess ceilings so a stuck ffmpeg can never block a worker forever.
+_PROBE_TIMEOUT_SECONDS = 30
+_TRANSCODE_TIMEOUT_SECONDS = 300
+
+# ffmpeg prints "Duration: HH:MM:SS.ss" to stderr while reading the header.
+_DURATION_RE = re.compile(r"Duration:\s*(\d+):(\d\d):(\d\d(?:\.\d+)?)")
+
+
+def _probe_duration_seconds(filepath: str) -> float | None:
+    """Return the input's duration in seconds from ffmpeg's header metadata.
+
+    Runs the bundled ffmpeg with no output file so it only parses the container
+    header (cheap, no decode) and prints a ``Duration:`` line to stderr.
+    Returns ``None`` when the duration cannot be determined. Propagates
+    ``FileNotFoundError`` when the ffmpeg binary is missing.
+    """
+    try:
+        proc = subprocess.run(
+            [FFMPEG_BINARY, "-i", filepath],
+            capture_output=True,
+            timeout=_PROBE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return None
+    # ffmpeg exits non-zero when given no output file; the metadata we want is
+    # on stderr regardless, so we parse it rather than checking the exit code.
+    match = _DURATION_RE.search(proc.stderr.decode("utf-8", "ignore"))
+    if not match:
+        return None
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
 
 def _transcode_to_wav(filepath: str) -> str:
     """Decode an audio/video file to a temporary mono WAV using ffmpeg.
 
     Uses the imageio-ffmpeg bundled binary (:data:`FFMPEG_BINARY`), so no
-    system-wide ffmpeg install is required. Returns the path to the temp WAV;
-    the caller is responsible for deleting it. Propagates ``FileNotFoundError``
-    when the binary is missing, and raises ``ValueError`` when ffmpeg cannot
-    decode the input (e.g. the file has no audio stream).
+    system-wide ffmpeg install is required. Rejects inputs longer than
+    :data:`MAX_TRANSCODE_DURATION_SECONDS` before decoding, and caps the
+    transcode with a timeout so a stuck ffmpeg cannot block a gunicorn worker.
+    Returns the path to the temp WAV; the caller is responsible for deleting
+    it. Propagates ``FileNotFoundError`` when the binary is missing, and raises
+    ``ValueError`` when the file is too long, times out, or cannot be decoded
+    (e.g. it has no audio stream).
     """
+    duration = _probe_duration_seconds(filepath)
+    if duration is not None and duration > MAX_TRANSCODE_DURATION_SECONDS:
+        limit_min = MAX_TRANSCODE_DURATION_SECONDS // 60
+        raise ValueError(
+            f"Audio is too long ({duration / 60:.1f} minutes). "
+            f"The maximum length is {limit_min} minutes."
+        )
+
     fd, audio_path = tempfile.mkstemp(suffix=".wav")
     os.close(fd)
     try:
@@ -54,6 +103,12 @@ def _transcode_to_wav(filepath: str) -> str:
             ],
             check=True,
             capture_output=True,
+            timeout=_TRANSCODE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        _silent_remove(audio_path)
+        raise ValueError(
+            "Transcoding timed out; the file is too large or complex to process."
         )
     except subprocess.CalledProcessError as exc:
         _silent_remove(audio_path)
