@@ -14,6 +14,14 @@ MIN_DENSE_SWARAS = 6
 # shares ~0.71).
 MIN_SHARED_FRACTION = 0.6
 
+# Shown with every analysis result. Covers the educational nature of the tool,
+# how uploads are handled, and the user's responsibility over what they upload.
+ANALYSIS_DISCLAIMER = (
+    "This analysis is provided for educational purposes only. Uploaded audio is "
+    "deleted immediately after processing and is never stored. Please only upload "
+    "recordings that you own or have permission to analyze."
+)
+
 
 class RaagaAnalysis(BaseModel):
     psychological: str
@@ -82,6 +90,10 @@ def get_raaga_analysis(raaga_name: str) -> dict:
     janya ragas, a fourth key ``note`` is added, flagging that swara detection
     alone cannot reliably separate the parent from its janyas. Simpler
     pentatonic ragas, where this ambiguity is unlikely, omit the key entirely.
+
+    Every result also carries a ``disclaimer`` key (``ANALYSIS_DISCLAIMER``)
+    covering the tool's educational purpose, that uploads are not stored, and
+    the user's responsibility over what they upload.
     """
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
@@ -107,6 +119,8 @@ mood) and any recognized music-therapy associations."""
     related = _related_janya_ragas(raaga_name)
     if related:
         result["note"] = _ambiguity_note(raaga_name, related)
+
+    result["disclaimer"] = ANALYSIS_DISCLAIMER
 
     return result
 

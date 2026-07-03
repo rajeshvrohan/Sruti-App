@@ -1,9 +1,11 @@
 import os
+import re
 import subprocess
 import tempfile
 
 import librosa
 import numpy as np
+import soundfile
 
 try:
     import imageio_ffmpeg
@@ -30,6 +32,10 @@ VOICED_PROB_MIN = 0.5
 # Extensions librosa/soundfile can decode directly. Anything else (MP3, M4A,
 # MP4, ...) is first transcoded to WAV with the bundled ffmpeg binary.
 NATIVE_EXTENSIONS = {".wav"}
+
+# Matches the "Duration: HH:MM:SS.ss" line ffmpeg prints to stderr when probing
+# a file's metadata, used to read a clip's length without decoding its samples.
+_FFMPEG_DURATION_RE = re.compile(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)")
 
 
 def _transcode_to_wav(filepath: str) -> str:
@@ -74,6 +80,42 @@ def _silent_remove(path: str) -> None:
 
 
 class AudioProcessor:
+    def get_duration(self, filepath: str) -> float:
+        """Return the length of an audio/video file in seconds.
+
+        Reads only container/header metadata — it does not decode or load the
+        waveform into memory — so it stays cheap even for very long files. This
+        lets callers reject over-long uploads before the costly pitch analysis
+        (and before decoding gigabytes of samples) ever runs.
+
+        WAV files are read directly with soundfile; other formats (MP3, M4A,
+        MP4, ...) are probed with the same bundled ffmpeg binary used for
+        transcoding. Raises ``ValueError`` if the duration cannot be determined,
+        and propagates ``FileNotFoundError`` when ffmpeg is required but missing.
+        """
+        if os.path.splitext(filepath)[1].lower() in NATIVE_EXTENSIONS:
+            return float(soundfile.info(filepath).duration)
+        return self._probe_duration_with_ffmpeg(filepath)
+
+    @staticmethod
+    def _probe_duration_with_ffmpeg(filepath: str) -> float:
+        """Read a file's duration (seconds) from ffmpeg's metadata output.
+
+        Invokes ``ffmpeg -i`` with no output target: ffmpeg prints the input's
+        metadata (including its ``Duration``) to stderr and exits non-zero, all
+        without decoding the media, so this is fast regardless of clip length.
+        """
+        proc = subprocess.run(
+            [FFMPEG_BINARY, "-i", filepath],
+            capture_output=True,
+        )
+        stderr = proc.stderr.decode("utf-8", "ignore")
+        match = _FFMPEG_DURATION_RE.search(stderr)
+        if not match:
+            raise ValueError("Could not determine the audio duration.")
+        hours, minutes, seconds = match.groups()
+        return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
     def extract_features(self, filepath: str) -> dict:
         y, sr = librosa.load(filepath)
 

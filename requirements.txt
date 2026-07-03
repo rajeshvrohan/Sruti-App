@@ -1,4 +1,5 @@
 flask
+flask-limiter[redis]
 librosa
 anthropic
 python-dotenv

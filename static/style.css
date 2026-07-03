@@ -234,3 +234,15 @@ button[type="submit"]:disabled {
     color: #9b2c1a;
     font-size: 0.9rem;
 }
+
+/* Disclaimer */
+
+.disclaimer {
+    margin-top: 2.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid #e0d4c0;
+    font-size: 0.8rem;
+    line-height: 1.6;
+    color: #9a8a72;
+    text-align: center;
+}
