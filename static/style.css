@@ -246,3 +246,127 @@ button[type="submit"]:disabled {
     color: #9a8a72;
     text-align: center;
 }
+
+.footer-links {
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+}
+
+/* Understated small print for disclaimers and notices. */
+.fine-print {
+    margin: 0 auto 0.5rem;
+    max-width: 34rem;
+    font-size: 0.72rem;
+    line-height: 1.55;
+    color: #a89880;
+}
+
+.copyright {
+    margin-top: 1rem;
+    font-size: 0.75rem;
+    color: #8a7a62;
+}
+
+/* AI disclosure banner */
+
+.ai-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    margin-bottom: 2rem;
+    padding: 0.8rem 1rem;
+    background-color: #fbf4e0;
+    border: 1px solid #ebd9a6;
+    border-left: 4px solid #c9a227;
+    border-radius: 6px;
+    color: #5a4a32;
+    font-size: 0.82rem;
+    line-height: 1.55;
+}
+
+.ai-banner-icon {
+    flex-shrink: 0;
+    font-size: 1rem;
+    color: #b8901f;
+    line-height: 1.4;
+}
+
+.ai-banner p {
+    margin: 0;
+}
+
+/* Small-print scale, but keep a readable color on the amber background. */
+.ai-banner .fine-print {
+    color: #5a4a32;
+    max-width: none;
+}
+
+.ai-banner strong {
+    color: #4a3a22;
+}
+
+/* Links */
+
+a {
+    color: #9c6b1e;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+a:hover {
+    color: #7a5216;
+}
+
+/* Terms agreement checkbox */
+
+.terms-agree {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: #5a4a32;
+    cursor: pointer;
+}
+
+.terms-agree input[type="checkbox"] {
+    flex-shrink: 0;
+    width: 1rem;
+    height: 1rem;
+    margin-top: 0.15rem;
+    accent-color: #9c6b1e;
+    cursor: pointer;
+}
+
+/* Privacy & Terms pages */
+
+.privacy-content h2,
+.legal-content h2 {
+    font-size: 1.05rem;
+    font-weight: normal;
+    color: #1a1008;
+    margin: 1.75rem 0 0.5rem;
+}
+
+.privacy-content p,
+.legal-content p {
+    font-size: 0.92rem;
+    line-height: 1.7;
+    color: #4a3a22;
+}
+
+.privacy-content strong,
+.legal-content strong {
+    color: #2c2416;
+}
+
+.legal-list {
+    margin: 0.5rem 0 0.5rem 1.25rem;
+    font-size: 0.92rem;
+    line-height: 1.7;
+    color: #4a3a22;
+}
+
+.legal-list li {
+    margin-bottom: 0.6rem;
+}
