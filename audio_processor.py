@@ -74,6 +74,25 @@ def _silent_remove(path: str) -> None:
 
 
 class AudioProcessor:
+    def get_duration(self, filepath: str) -> float:
+        """Return the duration of an audio file in seconds.
+
+        Native formats are read directly by librosa. Non-native inputs (MP3,
+        M4A, MP4) are first transcoded to a temporary WAV with the bundled
+        ffmpeg binary, mirroring :meth:`extract_swaras`. Raises
+        ``FileNotFoundError`` if ffmpeg is required but unavailable.
+        """
+        analysis_path = filepath
+        temp_audio = None
+        if os.path.splitext(filepath)[1].lower() not in NATIVE_EXTENSIONS:
+            analysis_path = temp_audio = _transcode_to_wav(filepath)
+
+        try:
+            return float(librosa.get_duration(path=analysis_path))
+        finally:
+            if temp_audio:
+                _silent_remove(temp_audio)
+
     def extract_features(self, filepath: str) -> dict:
         y, sr = librosa.load(filepath)
 
