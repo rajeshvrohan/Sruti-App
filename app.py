@@ -1,3 +1,9 @@
+# Test the production (gunicorn) setup locally:
+#     gunicorn app:app --bind 0.0.0.0:5000
+# To confirm the PORT env var is read, bind to it explicitly, e.g.:
+#     PORT=8080 gunicorn app:app --bind 0.0.0.0:$PORT   # serves on :8080
+# (Under `python app.py` the __main__ block reads PORT itself; see the bottom.)
+
 import os
 from flask import Flask, request, jsonify, render_template
 from flask_limiter import Limiter
@@ -197,4 +203,5 @@ def analyze():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
