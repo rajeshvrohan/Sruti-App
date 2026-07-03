@@ -61,8 +61,7 @@
                 : 'Choose a WAV, MP3, or M4A file';
         });
 
-        // Drag-and-drop: highlight on drag-over, then route the dropped file
-        // through the same <input> so the existing submit logic is unchanged.
+        // Drag-and-drop: highlight, then route the file through the same <input>.
         ['dragenter', 'dragover'].forEach((evt) => {
             fileArea.addEventListener(evt, (e) => {
                 e.preventDefault();
@@ -83,16 +82,15 @@
             const dropped = e.dataTransfer.files;
             if (!dropped || !dropped.length) return;
 
-            // Assign the dropped file to the file input so input.files[0] works.
+            // Assign to the file input so input.files[0] works.
             const dataTransfer = new DataTransfer();
             dataTransfer.items.add(dropped[0]);
             input.files = dataTransfer.files;
 
-            // Reuse the existing change handler to update the filename display.
-            input.dispatchEvent(new Event('change'));
+            input.dispatchEvent(new Event('change'));  // update filename display
         });
 
-        // Prevent the browser from opening the file if it's dropped outside the zone.
+        // Don't let the browser open a file dropped outside the zone.
         window.addEventListener('dragover', (e) => e.preventDefault());
         window.addEventListener('drop', (e) => e.preventDefault());
 

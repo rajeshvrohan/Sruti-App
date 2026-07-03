@@ -1,11 +1,9 @@
 import os
-import re
 import subprocess
 import tempfile
 
 import librosa
 import numpy as np
-import soundfile
 
 try:
     import imageio_ffmpeg
@@ -32,10 +30,6 @@ VOICED_PROB_MIN = 0.5
 # Extensions librosa/soundfile can decode directly. Anything else (MP3, M4A,
 # MP4, ...) is first transcoded to WAV with the bundled ffmpeg binary.
 NATIVE_EXTENSIONS = {".wav"}
-
-# Matches the "Duration: HH:MM:SS.ss" line ffmpeg prints to stderr when probing
-# a file's metadata, used to read a clip's length without decoding its samples.
-_FFMPEG_DURATION_RE = re.compile(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)")
 
 
 def _transcode_to_wav(filepath: str) -> str:
@@ -80,42 +74,6 @@ def _silent_remove(path: str) -> None:
 
 
 class AudioProcessor:
-    def get_duration(self, filepath: str) -> float:
-        """Return the length of an audio/video file in seconds.
-
-        Reads only container/header metadata — it does not decode or load the
-        waveform into memory — so it stays cheap even for very long files. This
-        lets callers reject over-long uploads before the costly pitch analysis
-        (and before decoding gigabytes of samples) ever runs.
-
-        WAV files are read directly with soundfile; other formats (MP3, M4A,
-        MP4, ...) are probed with the same bundled ffmpeg binary used for
-        transcoding. Raises ``ValueError`` if the duration cannot be determined,
-        and propagates ``FileNotFoundError`` when ffmpeg is required but missing.
-        """
-        if os.path.splitext(filepath)[1].lower() in NATIVE_EXTENSIONS:
-            return float(soundfile.info(filepath).duration)
-        return self._probe_duration_with_ffmpeg(filepath)
-
-    @staticmethod
-    def _probe_duration_with_ffmpeg(filepath: str) -> float:
-        """Read a file's duration (seconds) from ffmpeg's metadata output.
-
-        Invokes ``ffmpeg -i`` with no output target: ffmpeg prints the input's
-        metadata (including its ``Duration``) to stderr and exits non-zero, all
-        without decoding the media, so this is fast regardless of clip length.
-        """
-        proc = subprocess.run(
-            [FFMPEG_BINARY, "-i", filepath],
-            capture_output=True,
-        )
-        stderr = proc.stderr.decode("utf-8", "ignore")
-        match = _FFMPEG_DURATION_RE.search(stderr)
-        if not match:
-            raise ValueError("Could not determine the audio duration.")
-        hours, minutes, seconds = match.groups()
-        return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
-
     def extract_features(self, filepath: str) -> dict:
         y, sr = librosa.load(filepath)
 
@@ -189,11 +147,6 @@ class AudioProcessor:
         real note only if it spans at least ``min_segment_frames`` frames, which
         discards the pitch-glide frames between notes. Each segment's median
         frequency is mapped to its closest swara.
-
-        Unlike a frame-count histogram, this gives every sustained note equal
-        weight regardless of how long it is held, so brief melodic notes in a
-        phrase are preserved instead of being swamped by long, drone-like low
-        notes.
         """
         times, f0, voiced_prob = self._analyze_pitch(filepath, debug=debug)
         segments = self._segment_notes(
@@ -306,8 +259,7 @@ class AudioProcessor:
         """Return the fundamental frequency (Hz) of each voiced, confident window.
 
         Unvoiced frames (NaN) and low-confidence frames (voicing probability
-        below ``VOICED_PROB_MIN``) are dropped. This is a flat list with no note
-        structure; :meth:`detected_swaras` uses :meth:`_segment_notes` instead.
+        below ``VOICED_PROB_MIN``) are dropped. 
         """
         _times, f0, voiced_prob = self._analyze_pitch(filepath, debug=debug)
         return [
@@ -329,3 +281,4 @@ class AudioProcessor:
 
         pitch_list.sort(reverse=True)
         return pitch_list[:top_n]
+

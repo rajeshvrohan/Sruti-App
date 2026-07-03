@@ -4,18 +4,14 @@ from pydantic import BaseModel
 
 from raaga_database import RAAGAS, raaga_swaras
 
-# A raaga needs at least this many distinct swaras to be considered "dense"
-# enough that closely related janya ragas become hard to tell apart by note set
-# alone. Pentatonic (audava, 5-note) ragas fall below this and skip the note.
+# Min distinct swaras for a raaga to be "dense" enough that janyas blur together;
+# pentatonic ragas fall below this and skip the ambiguity note.
 MIN_DENSE_SWARAS = 6
 
-# A related raga must share at least this fraction of the identified raga's
-# swaras to count as "closely related" (e.g. a 5-note janya of a 7-note parent
-# shares ~0.71).
+# Min fraction of the identified raga's swaras a related raga must share.
 MIN_SHARED_FRACTION = 0.6
 
-# Shown with every analysis result. Covers the educational nature of the tool,
-# how uploads are handled, and the user's responsibility over what they upload.
+# Shown with every analysis result.
 ANALYSIS_DISCLAIMER = (
     "This analysis is provided for educational purposes only. Uploaded audio is "
     "deleted immediately after processing and is never stored. Please only upload "
@@ -30,14 +26,9 @@ class RaagaAnalysis(BaseModel):
 
 
 def _related_janya_ragas(raaga_name: str) -> list[str]:
-    """Return DB ragas that share most of ``raaga_name``'s swara set, closest first.
+    """DB ragas whose swaras are a subset of raaga_name's and share >= MIN_SHARED_FRACTION, closest first.
 
-    A related raga is one whose (octave-folded) swaras are a subset of the
-    identified raga's swaras — i.e. it could be derived from it as a janya, or
-    uses the same notes with different phrasing — while still sharing at least
-    ``MIN_SHARED_FRACTION`` of them. Results are ordered most-similar first.
-    Returns an empty list for ragas with a sparse (pentatonic) note set, where
-    this ambiguity is unlikely.
+    Empty for sparse (pentatonic) ragas, where this ambiguity is unlikely.
     """
     parent = RAAGAS.get(raaga_name)
     if parent is None:
@@ -62,7 +53,7 @@ def _related_janya_ragas(raaga_name: str) -> list[str]:
 
 
 def _ambiguity_note(raaga_name: str, related: list[str], max_examples: int = 3) -> str:
-    """Build the note acknowledging parent/janya ambiguity under swara detection."""
+    """Note acknowledging parent/janya ambiguity under swara detection."""
     shown = related[:max_examples]
     names = ", ".join(shown)
     if len(related) > len(shown):
@@ -79,21 +70,11 @@ def _ambiguity_note(raaga_name: str, related: list[str], max_examples: int = 3) 
 
 
 def get_raaga_analysis(raaga_name: str) -> dict:
-    """Ask Claude to explain a raaga's effects on listeners and its compositions.
+    """Ask Claude to explain a raaga's effects and compositions.
 
-    Returns a dict with three keys:
-      * ``psychological`` — the raaga's psychological effects on listeners
-      * ``physiological`` — its physiological effects
-      * ``meaning``       — common themes/meanings in compositions in this raaga
-
-    For a dense raaga that shares most of its swara set with closely related
-    janya ragas, a fourth key ``note`` is added, flagging that swara detection
-    alone cannot reliably separate the parent from its janyas. Simpler
-    pentatonic ragas, where this ambiguity is unlikely, omit the key entirely.
-
-    Every result also carries a ``disclaimer`` key (``ANALYSIS_DISCLAIMER``)
-    covering the tool's educational purpose, that uploads are not stored, and
-    the user's responsibility over what they upload.
+    Returns keys `psychological`, `physiological`, `meaning`, always a
+    `disclaimer`, and — for dense ragas with close janyas — a `note` flagging
+    that swara detection can't separate parent from janya.
     """
     client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 

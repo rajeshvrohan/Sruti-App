@@ -1,15 +1,7 @@
-"""Database of common Carnatic raagas.
+"""Common Carnatic raagas: each with its arohana (ascent) and avarohana (descent).
 
-Each raaga lists its arohana (ascending scale) and avarohana (descending scale)
-using the same swara names as ``swara_database`` (S, R1, R2, G1, G2, M1, M2, P,
-D1, D2, N1, N2). ``S'`` denotes the tara-sthayi (upper octave) shadja that
-closes a scale.
-
-Swara names follow the project's 12-semitone convention, where each note has two
-variants one semitone apart:
-    S(0) R1(1) R2(2) G1(3) G2(4) M1(5) M2(6) P(7) D1(8) D2(9) N1(10) N2(11) S'(12)
-So, for example, the Carnatic Sadharana Gandhara maps to G1 and Antara Gandhara
-to G2; Kaisiki Nishada maps to N1 and Kakali Nishada to N2.
+Swaras follow the 12-semitone convention (S R1 R2 G1 G2 M1 M2 P D1 D2 N1 N2);
+S' is the upper-octave shadja closing a scale.
 """
 
 def _fold_octave(swara: str) -> str:
@@ -23,16 +15,10 @@ def raaga_swaras(raaga: dict) -> set[str]:
 
 
 def match_raagas(detected_swaras, top_n: int | None = None) -> list[dict]:
-    """Match a set of detected swaras against the raaga database.
+    """Strict match: candidate raagas must contain every detected swara.
 
-    A raaga is a candidate only if it contains every detected swara (i.e. the
-    input uses no swara foreign to the raaga). Candidates are ranked by how
-    completely their scale is covered by the input, so a raaga whose every note
-    has been heard scores 1.0 and ranks above larger raagas that merely contain
-    the input.
-
-    Returns a list of dicts: ``name``, ``score`` (0-1), and ``missing`` (swaras
-    in the raaga not present in the input), best match first.
+    Ranked by scale coverage (score 0-1). Returns dicts of `name`, `score`,
+    `missing`, best first.
     """
     detected = {_fold_octave(s) for s in detected_swaras}
 
@@ -51,24 +37,11 @@ def match_raagas(detected_swaras, top_n: int | None = None) -> list[dict]:
 
 
 def identify_raaga(detected_swaras, top_n: int = 3) -> list[dict]:
-    """Identify the most likely raagas from a list of detected swaras.
+    """Rank raagas by how many of their swaras were detected, tolerating noisy/partial input.
 
-    Unlike :func:`match_raagas`, this tolerates incomplete or noisy input: every
-    raaga is scored by how many of its swaras appear in the detected set, rather
-    than requiring an exact subset. This makes it robust when only part of a
-    raaga has been heard, or when stray/foreign swaras creep into the detection.
-
-    Each raaga's ``match_percentage`` is the share of *its* swaras that were
-    detected (matched / total swaras in the raaga). Ties are broken in favour of
-    the raaga that leaves the fewest detected swaras unexplained, so an ambiguous
-    set still surfaces the closest fit first.
-
-    Returns up to ``top_n`` dicts, best match first, each with:
-      * ``name``             — raaga name
-      * ``match_percentage`` — 0-100, how much of the raaga was detected
-      * ``matched``          — its swaras that were detected
-      * ``missing``          — its swaras not yet detected (incompleteness)
-      * ``unexpected``       — detected swaras absent from the raaga (ambiguity)
+    match_percentage is the share of a raaga's swaras detected; ties favour the
+    fewest unexplained detected swaras. Returns up to top_n dicts with `name`,
+    `match_percentage`, `matched`, `missing`, `unexpected`, best first.
     """
     detected = {_fold_octave(s) for s in detected_swaras}
     if not detected:
