@@ -17,6 +17,7 @@
                 <label for="audio-input" class="file-label">
                     <span class="file-icon">&#9835;</span>
                     <span id="file-name-display">Choose a WAV, MP3, or M4A file</span>
+                    <span class="file-hint">or drag &amp; drop it here</span>
                 </label>
             </div>
 
@@ -46,11 +47,48 @@
         const errorMessage = document.getElementById('error-message');
         const submitBtn = document.getElementById('submit-btn');
 
+        const fileArea = document.getElementById('file-area');
+
         input.addEventListener('change', () => {
             fileNameDisplay.textContent = input.files[0]
                 ? input.files[0].name
                 : 'Choose a WAV, MP3, or M4A file';
         });
+
+        // Drag-and-drop: highlight on drag-over, then route the dropped file
+        // through the same <input> so the existing submit logic is unchanged.
+        ['dragenter', 'dragover'].forEach((evt) => {
+            fileArea.addEventListener(evt, (e) => {
+                e.preventDefault();
+                fileArea.classList.add('drag-over');
+            });
+        });
+
+        ['dragleave', 'dragend'].forEach((evt) => {
+            fileArea.addEventListener(evt, () => {
+                fileArea.classList.remove('drag-over');
+            });
+        });
+
+        fileArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileArea.classList.remove('drag-over');
+
+            const dropped = e.dataTransfer.files;
+            if (!dropped || !dropped.length) return;
+
+            // Assign the dropped file to the file input so input.files[0] works.
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(dropped[0]);
+            input.files = dataTransfer.files;
+
+            // Reuse the existing change handler to update the filename display.
+            input.dispatchEvent(new Event('change'));
+        });
+
+        // Prevent the browser from opening the file if it's dropped outside the zone.
+        window.addEventListener('dragover', (e) => e.preventDefault());
+        window.addEventListener('drop', (e) => e.preventDefault());
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -116,6 +154,45 @@
                     ul.appendChild(li);
                 });
                 resultsContent.appendChild(ul);
+            }
+
+            if (data.analysis) {
+                const topName = data.raagas && data.raagas.length
+                    ? data.raagas[0].name
+                    : 'top match';
+
+                const h3 = document.createElement('h3');
+                h3.textContent = 'Analysis — ' + topName;
+                resultsContent.appendChild(h3);
+
+                const sections = [
+                    ['Psychological effects', data.analysis.psychological],
+                    ['Physiological effects', data.analysis.physiological],
+                    ['Themes & meaning in compositions', data.analysis.meaning],
+                ];
+
+                sections.forEach(([title, text]) => {
+                    const block = document.createElement('div');
+                    block.className = 'analysis-section';
+
+                    const label = document.createElement('h4');
+                    label.textContent = title;
+                    block.appendChild(label);
+
+                    const p = document.createElement('p');
+                    p.className = 'analysis-text';
+                    p.textContent = text || '—';
+                    block.appendChild(p);
+
+                    resultsContent.appendChild(block);
+                });
+
+                if (data.analysis.note) {
+                    const note = document.createElement('p');
+                    note.className = 'analysis-note';
+                    note.textContent = data.analysis.note;
+                    resultsContent.appendChild(note);
+                }
             }
 
             if (data.filename) {

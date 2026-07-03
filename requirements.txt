@@ -2,3 +2,4 @@ flask
 librosa
 anthropic
 python-dotenv
+imageio-ffmpeg
