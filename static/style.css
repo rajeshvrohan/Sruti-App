@@ -267,44 +267,6 @@ button[type="submit"]:disabled {
     color: #8a7a62;
 }
 
-/* AI disclosure banner */
-
-.ai-banner {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.6rem;
-    margin-bottom: 2rem;
-    padding: 0.8rem 1rem;
-    background-color: #fbf4e0;
-    border: 1px solid #ebd9a6;
-    border-left: 4px solid #c9a227;
-    border-radius: 6px;
-    color: #5a4a32;
-    font-size: 0.82rem;
-    line-height: 1.55;
-}
-
-.ai-banner-icon {
-    flex-shrink: 0;
-    font-size: 1rem;
-    color: #b8901f;
-    line-height: 1.4;
-}
-
-.ai-banner p {
-    margin: 0;
-}
-
-/* Small-print scale, but keep a readable color on the amber background. */
-.ai-banner .fine-print {
-    color: #5a4a32;
-    max-width: none;
-}
-
-.ai-banner strong {
-    color: #4a3a22;
-}
-
 /* Links */
 
 a {
