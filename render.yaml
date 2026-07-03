@@ -7,3 +7,7 @@ services:
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Disable numba JIT compilation, which spikes memory on startup and
+      # triggers out-of-memory crashes on Render's constrained instances.
+      - key: NUMBA_DISABLE_JIT
+        value: "1"
