@@ -198,7 +198,17 @@
                     body: formData,
                 });
 
-                const data = await response.json();
+                let data;
+                try {
+                    data = await response.json();
+                } catch {
+                    // The app always answers JSON, so a non-JSON body means a
+                    // proxy/CDN in front of it (e.g. Cloudflare) responded.
+                    throw new Error(
+                        `The server sent a non-JSON response (HTTP ${response.status} from ` +
+                        `${new URL(response.url).host}) — a proxy or CDN answered instead of the app.`
+                    );
+                }
 
                 if (!response.ok) {
                     throw new Error(data.error || 'An unexpected error occurred.');
