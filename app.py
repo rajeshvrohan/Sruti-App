@@ -65,6 +65,9 @@ def allowed_file(filename):
 MIN_TONIC_HZ = 60.0
 MAX_TONIC_HZ = 600.0
 
+@app.route('/favicon.ico')
+def favicon():
+    return app.send_static_file('favicon.ico')
 
 def parse_tonic(raw):
     """Parse an optional user-supplied tonic (Sa) in Hz.

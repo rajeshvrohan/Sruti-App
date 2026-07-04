@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Sruti mark: Sa curve with tara-sthayi octave dot -->
+  <rect width="64" height="64" rx="14" fill="#1A1008"/>
+  <path d="M 45 22 C 42 15.5, 30 13.5, 23.5 18.5 C 17.5 23.5, 20 30.5, 28 32 L 36 33.5 C 44 35, 46.5 42, 40.5 47 C 34 52, 22 50, 19 43.5"
+        fill="none" stroke="#9C6B1E" stroke-width="7.5" stroke-linecap="round"/>
+  <circle cx="32" cy="7.5" r="3.75" fill="#9C6B1E"/>
+</svg>
