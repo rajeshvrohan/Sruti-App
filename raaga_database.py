@@ -37,11 +37,15 @@ def match_raagas(detected_swaras, top_n: int | None = None) -> list[dict]:
 
 
 def identify_raaga(detected_swaras, top_n: int = 3) -> list[dict]:
-    """Rank raagas by how many of their swaras were detected, tolerating noisy/partial input.
+    """Rank raagas by overlap with the detected swaras, tolerating noisy/partial input.
 
-    match_percentage is the share of a raaga's swaras detected; ties favour the
-    fewest unexplained detected swaras. Returns up to top_n dicts with `name`,
-    `match_percentage`, `matched`, `missing`, `unexpected`, best first.
+    match_percentage is the Jaccard overlap between the detected swaras and the
+    raaga's scale, so a candidate loses ground both for scale swaras that were
+    not heard and for detected swaras it cannot explain — a pentatonic raaga
+    can no longer outrank its parent scale just because its few swaras were all
+    present. Ties favour the fewest unexplained detected swaras. Returns up to
+    top_n dicts with `name`, `match_percentage`, `matched`, `missing`,
+    `unexpected`, best first.
     """
     detected = {_fold_octave(s) for s in detected_swaras}
     if not detected:
@@ -56,7 +60,7 @@ def identify_raaga(detected_swaras, top_n: int = 3) -> list[dict]:
         results.append(
             {
                 "name": name,
-                "match_percentage": round(100 * len(matched) / len(scale), 1),
+                "match_percentage": round(100 * len(matched) / len(detected | scale), 1),
                 "matched": _sorted_swaras(matched),
                 "missing": _sorted_swaras(scale - detected),
                 "unexpected": _sorted_swaras(detected - scale),
