@@ -148,6 +148,31 @@ button[type="submit"]:disabled {
     to { transform: rotate(360deg); }
 }
 
+#upload-progress {
+    margin-top: 2rem;
+    color: #7a6a52;
+    font-size: 0.95rem;
+}
+
+#upload-progress p {
+    margin-top: 0.5rem;
+}
+
+.progress-track {
+    height: 10px;
+    background-color: #ece1cd;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    width: 0%;
+    background-color: #8b5e2e;
+    border-radius: 5px;
+    transition: width 0.2s ease;
+}
+
 /* Results */
 
 #results {

@@ -44,6 +44,13 @@
             <button type="submit" id="submit-btn">Analyze</button>
         </form>
 
+        <div id="upload-progress" class="hidden">
+            <div class="progress-track">
+                <div id="progress-fill" class="progress-fill"></div>
+            </div>
+            <p id="progress-text">Uploading&hellip;</p>
+        </div>
+
         <div id="loading" class="hidden">
             <div class="spinner"></div>
             <p>Analyzing your recording&hellip;</p>
@@ -91,6 +98,9 @@
         const errorMessage = document.getElementById('error-message');
         const submitBtn = document.getElementById('submit-btn');
         const agreeCheckbox = document.getElementById('agree-terms');
+        const uploadProgress = document.getElementById('upload-progress');
+        const progressFill = document.getElementById('progress-fill');
+        const progressText = document.getElementById('progress-text');
 
         const fileArea = document.getElementById('file-area');
         const tonicInput = document.getElementById('tonic-input');
@@ -195,7 +205,9 @@
             // Reset state
             results.classList.add('hidden');
             errorMessage.classList.add('hidden');
-            loading.classList.remove('hidden');
+            progressFill.style.width = '0%';
+            progressText.textContent = 'Uploading…';
+            uploadProgress.classList.remove('hidden');
             submitBtn.disabled = true;
 
             const formData = new FormData();
@@ -210,20 +222,30 @@
                 // sruti.io) caps request bodies at 100 MB, but the direct
                 // host has no such limit. Empty when running locally.
                 const ANALYZE_URL = '{{ analyze_base }}' + '/analyze';
-                const response = await fetch(ANALYZE_URL, {
-                    method: 'POST',
-                    body: formData,
+                const response = await postWithProgress(ANALYZE_URL, formData, {
+                    onProgress(loaded, total) {
+                        const pct = Math.min(100, Math.round(100 * loaded / total));
+                        const mb = (bytes) => Math.round(bytes / (1024 * 1024));
+                        progressFill.style.width = pct + '%';
+                        progressText.textContent =
+                            `Uploading… ${pct}% (${mb(loaded)} of ${mb(total)} MB)`;
+                    },
+                    onUploadDone() {
+                        // Last byte is out; from here we wait on the analysis.
+                        uploadProgress.classList.add('hidden');
+                        loading.classList.remove('hidden');
+                    },
                 });
 
                 let data;
                 try {
-                    data = await response.json();
+                    data = JSON.parse(response.text);
                 } catch {
                     // The app always answers JSON, so a non-JSON body means a
                     // proxy/CDN in front of it (e.g. Cloudflare) responded.
                     throw new Error(
                         `The server sent a non-JSON response (HTTP ${response.status} from ` +
-                        `${new URL(response.url).host}) — a proxy or CDN answered instead of the app.`
+                        `${response.host}) — a proxy or CDN answered instead of the app.`
                     );
                 }
 
@@ -237,10 +259,33 @@
                 errorMessage.textContent = err.message;
                 errorMessage.classList.remove('hidden');
             } finally {
+                uploadProgress.classList.add('hidden');
                 loading.classList.add('hidden');
                 submitBtn.disabled = false;
             }
         });
+
+        // POST via XMLHttpRequest: unlike fetch, it reports upload progress.
+        function postWithProgress(url, formData, { onProgress, onUploadDone }) {
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', url);
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) onProgress(e.loaded, e.total);
+                });
+                xhr.upload.addEventListener('load', onUploadDone);
+                xhr.addEventListener('load', () => resolve({
+                    ok: xhr.status >= 200 && xhr.status < 300,
+                    status: xhr.status,
+                    host: new URL(xhr.responseURL || url, window.location.href).host,
+                    text: xhr.responseText,
+                }));
+                xhr.addEventListener('error', () => reject(new Error(
+                    'The upload failed — check your connection and try again.'
+                )));
+                xhr.send(formData);
+            });
+        }
 
         function renderResults(data) {
             resultsContent.innerHTML = '';
