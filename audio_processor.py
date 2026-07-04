@@ -1,4 +1,11 @@
 import os
+
+# Must be set before librosa (and its numba-backed deps) are imported;
+# once numba initializes, toggling this env var has no effect. Disables
+# numba JIT compilation, which spikes memory on startup and triggers
+# out-of-memory crashes on Render's constrained instances.
+os.environ["NUMBA_DISABLE_JIT"] = "1"
+
 import re
 import subprocess
 import tempfile
