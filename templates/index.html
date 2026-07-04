@@ -169,6 +169,21 @@
             const file = input.files[0];
             if (!file) return;
 
+            // Must match MAX_CONTENT_LENGTH in app.py; Cloudflare also caps
+            // request bodies at 100 MB, answering with an HTML 413 the app
+            // never sees, so reject oversized files before uploading.
+            const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+            if (file.size > MAX_UPLOAD_BYTES) {
+                results.classList.add('hidden');
+                loading.classList.add('hidden');
+                errorMessage.textContent =
+                    `This file is ${(file.size / (1024 * 1024)).toFixed(0)} MB; ` +
+                    'the maximum upload size is 100 MB. Try a shorter clip or a ' +
+                    'compressed format like MP3 or M4A.';
+                errorMessage.classList.remove('hidden');
+                return;
+            }
+
             // Require agreement to the Terms of Service before analyzing.
             if (!agreeCheckbox.checked) {
                 results.classList.add('hidden');

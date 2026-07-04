@@ -20,7 +20,10 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = "uploads"
-app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024 * 1024  # 1 GB limit
+# Cloudflare (fronting sruti.io) rejects request bodies over 100 MB with an
+# HTML 413 before they reach the app, so a higher limit here is unreachable in
+# production. Keep both in lockstep with the client-side check in index.html.
+app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100 MB limit
 
 ALLOWED_EXTENSIONS = {"wav", "mp3", "m4a", "mp4"}
 
@@ -100,7 +103,7 @@ def handle_file_too_large(exc):
     """JSON error for uploads over MAX_CONTENT_LENGTH."""
     limit_mb = app.config["MAX_CONTENT_LENGTH"] // (1024 * 1024)
     return jsonify(
-        {"error": f"File is too large. The maximum upload size is {limit_mb} MB (1 GB)."}
+        {"error": f"File is too large. The maximum upload size is {limit_mb} MB."}
     ), 413
 
 
