@@ -1,15 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
-    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="32x32">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sruti: A Carnatic Music Analyzer</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
+{% extends "base.html" %}
+
+{% block title %}Sruti: A Carnatic Music Analyzer{% endblock %}
+
+{% block content %}
     <main class="container">
         <h1>Sruti: A Carnatic Music Analyzer</h1>
         <p class="subtitle">Upload a recording to identify ragas, tala, and musical characteristics.</p>
@@ -384,5 +377,4 @@
             }
         }
     </script>
-</body>
-</html>
+{% endblock %}

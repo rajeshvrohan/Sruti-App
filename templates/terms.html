@@ -1,15 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
-    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="32x32">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Terms of Service &mdash; Carnatic Music Analyzer</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
+{% extends "base.html" %}
+
+{% block title %}Terms of Service &mdash; Carnatic Music Analyzer{% endblock %}
+
+{% block content %}
     <main class="container">
         <h1>Terms of Service</h1>
         <p class="subtitle">Please read these terms before uploading audio.</p>
@@ -61,5 +54,4 @@
             <a href="{{ url_for('index') }}">&larr; Back to the analyzer</a>
         </footer>
     </main>
-</body>
-</html>
+{% endblock %}
