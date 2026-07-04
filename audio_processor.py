@@ -1,12 +1,4 @@
 import os
-
-# Must be set before librosa imports numba. On the 512MB Render plan the cold
-# numba JIT compile (LLVM) spikes RSS enough to get the worker OOM-killed
-# (gunicorn logs "SIGKILL! Perhaps out of memory?"). Windowed analysis keeps
-# the interpreted (JIT-off) path fast enough, so disabling JIT trades a little
-# CPU for staying inside the memory limit. Do not re-enable on this plan.
-os.environ["NUMBA_DISABLE_JIT"] = "1"
-
 import re
 import subprocess
 import tempfile

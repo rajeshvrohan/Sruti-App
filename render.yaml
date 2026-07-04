@@ -10,8 +10,3 @@ services:
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
-      # The cold numba JIT compile spikes memory enough to OOM-kill the worker
-      # on this plan; disable it. Windowed analysis keeps the JIT-off path fast
-      # enough. Mirrors the in-code setting in audio_processor.py.
-      - key: NUMBA_DISABLE_JIT
-        value: "1"
