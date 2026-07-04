@@ -20,10 +20,14 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = "uploads"
-# Cloudflare (fronting sruti.io) rejects request bodies over 100 MB with an
-# HTML 413 before they reach the app, so a higher limit here is unreachable in
-# production. Keep both in lockstep with the client-side check in index.html.
-app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100 MB limit
+# Cloudflare (fronting sruti.io) rejects request bodies over 100 MB, so the
+# page uploads straight to the Render host (RENDER_EXTERNAL_URL) instead,
+# where this is the only limit. Keep it in lockstep with the client-side
+# check in index.html.
+app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024 * 1024  # 1 GB limit
+
+# Origins allowed to make the cross-origin upload described above.
+ALLOWED_UPLOAD_ORIGINS = {"https://sruti.io", "https://www.sruti.io"}
 
 ALLOWED_EXTENSIONS = {"wav", "mp3", "m4a", "mp4"}
 
@@ -127,9 +131,29 @@ def handle_http_exception(exc):
     return jsonify({"error": exc.description}), exc.code
 
 
+@app.after_request
+def allow_cross_origin_uploads(response):
+    """Let the sruti.io page read responses from direct-to-Render uploads.
+
+    A multipart POST is a "simple" CORS request, so no preflight handling is
+    needed — only this response header.
+    """
+    origin = request.headers.get("Origin")
+    if origin in ALLOWED_UPLOAD_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.vary.add("Origin")
+    return response
+
+
 @app.route("/")
 def index():
-    return render_template("index.html")
+    # Absolute base URL for uploads, sidestepping Cloudflare's 100 MB body
+    # cap on sruti.io. Render sets RENDER_EXTERNAL_URL; empty locally, which
+    # leaves the page using the relative /analyze path.
+    return render_template(
+        "index.html",
+        analyze_base=os.environ.get("RENDER_EXTERNAL_URL", "").rstrip("/"),
+    )
 
 
 @app.route("/privacy")
