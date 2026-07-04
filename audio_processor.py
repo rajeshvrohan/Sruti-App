@@ -208,21 +208,28 @@ class AudioProcessor:
     def get_duration(self, filepath: str) -> float:
         """Return the duration of an audio file in seconds.
 
-        Native formats are read directly by librosa. Non-native inputs (MP3,
-        M4A, MP4) are first transcoded to a temporary WAV with the bundled
-        ffmpeg binary, mirroring :meth:`extract_swaras`. Raises
-        ``FileNotFoundError`` if ffmpeg is required but unavailable.
+        Native WAV is read directly by librosa (soundfile header, cheap).
+        Non-native inputs (MP3, M4A, MP4) are measured from the container header
+        via ffmpeg *without transcoding* — the app rejects over-long clips here
+        before the analysis, so paying for a full transcode just to learn the
+        duration would double the ffmpeg work on every upload. Only if the
+        header probe can't determine the duration do we fall back to a
+        transcode. Raises ``FileNotFoundError`` if ffmpeg is required but
+        unavailable.
         """
-        analysis_path = filepath
-        temp_audio = None
-        if os.path.splitext(filepath)[1].lower() not in NATIVE_EXTENSIONS:
-            analysis_path = temp_audio = _transcode_to_wav(filepath)
+        if os.path.splitext(filepath)[1].lower() in NATIVE_EXTENSIONS:
+            return float(librosa.get_duration(path=filepath))
 
+        duration = _probe_duration_seconds(filepath)
+        if duration is not None:
+            return duration
+
+        # Header probe couldn't parse a duration; transcode and measure.
+        temp_audio = _transcode_to_wav(filepath)
         try:
-            return float(librosa.get_duration(path=analysis_path))
+            return float(librosa.get_duration(path=temp_audio))
         finally:
-            if temp_audio:
-                _silent_remove(temp_audio)
+            _silent_remove(temp_audio)
 
     def _load_audio(self, filepath: str) -> tuple[np.ndarray, int]:
         """Load any supported input as a mono float32 signal via soundfile.
