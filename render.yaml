@@ -3,12 +3,12 @@ services:
     name: carnatic-app
     env: python
     buildCommand: pip install -r requirements.txt
-    # One worker keeps memory within the 512MB plan. The 300s timeout must be
-    # long enough to cover the one-time numba JIT compile that runs at worker
-    # boot (app.py calls processor.warmup()) on Render's slow CPU; if the worker
-    # were killed mid-compile it would corrupt numba's cache. After warmup,
-    # windowed requests finish in seconds, well within this budget.
-    startCommand: gunicorn app:app --workers 1 --timeout 300
+    # Worker count and timeout live in gunicorn.conf.py (auto-loaded from the
+    # repo root), NOT here — the running service uses a dashboard Start Command
+    # of "gunicorn app:app", so flags added to this line would be ignored. Keep
+    # this matching the dashboard so it isn't misleading. Edit gunicorn.conf.py
+    # to change workers/timeout.
+    startCommand: gunicorn app:app
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
