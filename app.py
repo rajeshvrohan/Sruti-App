@@ -38,6 +38,17 @@ limiter = Limiter(
 
 processor = AudioProcessor()
 
+# Compile the numba-backed analysis path at import (worker boot) so no request
+# pays the cold-compile cost. On Render's slow CPU that compile can exceed the
+# gunicorn timeout and get the worker killed mid-compile, corrupting numba's
+# cache and failing later requests with "no compiled object yet". Best-effort:
+# if it fails, boot proceeds and the path compiles lazily on first request.
+try:
+    processor.warmup()
+    print("Numba analysis warmup complete.", flush=True)
+except Exception as exc:
+    print(f"Numba warmup failed (will compile lazily): {exc}", flush=True)
+
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS

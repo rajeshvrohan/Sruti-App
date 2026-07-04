@@ -183,6 +183,28 @@ def _load_wav(filepath: str) -> tuple[np.ndarray, int]:
 
 
 class AudioProcessor:
+    def warmup(self) -> None:
+        """Pre-compile the numba-backed analysis path at startup.
+
+        librosa's pitch functions (pyin, resample, and the localmax/Viterbi
+        helpers they call) JIT-compile on first use. On a slow instance that
+        cold compile can exceed the gunicorn request timeout and get the worker
+        killed mid-compile — which also corrupts numba's on-disk cache and makes
+        later requests fail with "no compiled object yet for ...". Running the
+        path once here, at boot, moves the compile cost out of every request.
+
+        Uses a short low-amplitude noise buffer so pyin exercises its full
+        pipeline (not a silence short-circuit). Callers should treat this as
+        best-effort and let boot proceed if it raises.
+        """
+        sr = ANALYSIS_SAMPLE_RATE
+        rng = np.random.default_rng(0)
+        noise = (0.01 * rng.standard_normal(sr)).astype(np.float32)
+        # Compile the resample guvectorize (native rate -> analysis rate)...
+        librosa.resample(noise, orig_sr=44100, target_sr=sr)
+        # ...and the full pyin pitch-tracking path.
+        librosa.pyin(noise, fmin=FREQ_MIN, fmax=FREQ_MAX, sr=sr)
+
     def get_duration(self, filepath: str) -> float:
         """Return the duration of an audio file in seconds.
 
