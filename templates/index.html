@@ -222,19 +222,17 @@
                 // sruti.io) caps request bodies at 100 MB, but the direct
                 // host has no such limit. Empty when running locally.
                 const ANALYZE_URL = '{{ analyze_base }}' + '/analyze';
-                const response = await postWithProgress(ANALYZE_URL, formData, {
-                    onProgress(loaded, total) {
-                        const pct = Math.min(100, Math.round(100 * loaded / total));
-                        const mb = (bytes) => Math.round(bytes / (1024 * 1024));
-                        progressFill.style.width = pct + '%';
-                        progressText.textContent =
-                            `Uploading… ${pct}% (${mb(loaded)} of ${mb(total)} MB)`;
-                    },
-                    onUploadDone() {
+                const response = await postWithProgress(ANALYZE_URL, formData, (loaded, total) => {
+                    const pct = Math.min(100, Math.round(100 * loaded / total));
+                    const mb = (bytes) => Math.round(bytes / (1024 * 1024));
+                    progressFill.style.width = pct + '%';
+                    progressText.textContent =
+                        `Uploading… ${pct}% (${mb(loaded)} of ${mb(total)} MB)`;
+                    if (loaded >= total) {
                         // Last byte is out; from here we wait on the analysis.
                         uploadProgress.classList.add('hidden');
                         loading.classList.remove('hidden');
-                    },
+                    }
                 });
 
                 let data;
@@ -266,14 +264,16 @@
         });
 
         // POST via XMLHttpRequest: unlike fetch, it reports upload progress.
-        function postWithProgress(url, formData, { onProgress, onUploadDone }) {
+        // Upload completion is signalled by onProgress reaching loaded === total;
+        // xhr.upload's own load/loadend events don't fire reliably cross-browser
+        // on cross-origin requests, so don't hang any behavior off them.
+        function postWithProgress(url, formData, onProgress) {
             return new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', url);
                 xhr.upload.addEventListener('progress', (e) => {
                     if (e.lengthComputable) onProgress(e.loaded, e.total);
                 });
-                xhr.upload.addEventListener('load', onUploadDone);
                 xhr.addEventListener('load', () => resolve({
                     ok: xhr.status >= 200 && xhr.status < 300,
                     status: xhr.status,
