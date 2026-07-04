@@ -26,6 +26,11 @@
                 <input type="number" id="tonic-input" name="tonic" step="0.1"
                        min="60" max="600" placeholder="Auto-detect" inputmode="decimal">
                 <span class="file-hint">Leave blank to detect automatically. Set your Sa here if the detected raaga looks wrong.</span>
+                <details class="note-ref">
+                    <summary>Know your Sa as a note? Tap it to set the Hz</summary>
+                    <div id="note-grid" class="note-grid"></div>
+                    <span class="file-hint">Equal-tempered pitches (A4 = 440 Hz), the same values a tuner or shruti box shows.</span>
+                </details>
             </div>
 
             <label class="terms-agree" for="agree-terms">
@@ -88,6 +93,36 @@
         const agreeCheckbox = document.getElementById('agree-terms');
 
         const fileArea = document.getElementById('file-area');
+        const tonicInput = document.getElementById('tonic-input');
+
+        // Build a note -> frequency reference (C3..C5) that fills the Sa input.
+        (function buildNoteReference() {
+            const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+            const grid = document.getElementById('note-grid');
+            for (let midi = 48; midi <= 72; midi++) {           // C3 (131 Hz) to C5 (523 Hz)
+                const hz = 440 * Math.pow(2, (midi - 69) / 12);
+                const chip = document.createElement('button');
+                chip.type = 'button';                            // never submit the form
+                chip.className = 'note-chip';
+                chip.dataset.hz = hz.toFixed(2);
+                chip.textContent = noteNames[midi % 12] + (Math.floor(midi / 12) - 1)
+                    + ' · ' + Math.round(hz);
+                grid.appendChild(chip);
+            }
+            grid.addEventListener('click', (e) => {
+                const chip = e.target.closest('.note-chip');
+                if (!chip) return;
+                tonicInput.value = chip.dataset.hz;
+                grid.querySelectorAll('.note-chip.selected')
+                    .forEach((c) => c.classList.remove('selected'));
+                chip.classList.add('selected');
+            });
+            // A manual edit no longer matches a chip; drop the highlight.
+            tonicInput.addEventListener('input', () => {
+                grid.querySelectorAll('.note-chip.selected')
+                    .forEach((c) => c.classList.remove('selected'));
+            });
+        })();
 
         input.addEventListener('change', () => {
             fileNameDisplay.textContent = input.files[0]

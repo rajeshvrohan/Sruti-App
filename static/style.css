@@ -368,3 +368,43 @@ a:hover {
     font-size: 0.82rem;
     color: #9a8a72;
 }
+
+/* Note -> frequency reference for setting Sa */
+.note-ref {
+    margin-top: 0.2rem;
+}
+
+.note-ref summary {
+    font-size: 0.82rem;
+    color: #8b5e2e;
+    cursor: pointer;
+}
+
+.note-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: 0.4rem;
+    margin: 0.6rem 0 0.4rem;
+}
+
+.note-chip {
+    padding: 0.4rem 0.3rem;
+    border: 1px solid #c9b89a;
+    border-radius: 6px;
+    background-color: #fff;
+    font-size: 0.8rem;
+    color: #2c2416;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+
+.note-chip:hover {
+    border-color: #8b5e2e;
+    background-color: #f3ead9;
+}
+
+.note-chip.selected {
+    border-color: #8b5e2e;
+    background-color: #8b5e2e;
+    color: #fff;
+}
