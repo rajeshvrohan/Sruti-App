@@ -21,6 +21,13 @@
                 </label>
             </div>
 
+            <div class="tonic-area">
+                <label for="tonic-input" class="tonic-label">Tonic (Sa) in Hz — optional</label>
+                <input type="number" id="tonic-input" name="tonic" step="0.1"
+                       min="60" max="600" placeholder="Auto-detect" inputmode="decimal">
+                <span class="file-hint">Leave blank to detect automatically. Set your Sa here if the detected raaga looks wrong.</span>
+            </div>
+
             <label class="terms-agree" for="agree-terms">
                 <input type="checkbox" id="agree-terms" name="agree-terms" required>
                 <span>
@@ -145,6 +152,10 @@
 
             const formData = new FormData();
             formData.append('audio', file);
+            const tonicVal = document.getElementById('tonic-input').value.trim();
+            if (tonicVal) {
+                formData.append('tonic', tonicVal);
+            }
 
             try {
                 const response = await fetch('/analyze', {
@@ -179,6 +190,25 @@
                     ? 'Detected swaras: ' + data.swaras.join(', ')
                     : 'No swaras detected.';
                 resultsContent.appendChild(p);
+            }
+
+            if (data.tonic_hz) {
+                const t = document.createElement('p');
+                t.className = 'analysis-text tonic-text';
+                const src = data.tonic_source === 'manual' ? 'your value' : 'auto-detected';
+                t.textContent = 'Tonic (Sa): ' + data.tonic_hz + ' Hz (' + src + ')';
+                resultsContent.appendChild(t);
+
+                if (data.tonic_source === 'auto') {
+                    // Surface the detected Sa so the user can correct it and re-run.
+                    const tonicInput = document.getElementById('tonic-input');
+                    tonicInput.placeholder = data.tonic_hz + ' Hz (detected)';
+                    const hint = document.createElement('p');
+                    hint.className = 'analysis-text tonic-hint';
+                    hint.textContent =
+                        'Wrong raaga? The tonic may be off — enter your Sa above and analyze again.';
+                    resultsContent.appendChild(hint);
+                }
             }
 
             if (data.raagas && data.raagas.length) {

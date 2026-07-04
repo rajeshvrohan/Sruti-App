@@ -18,7 +18,12 @@ except Exception:
     FFMPEG_BINARY = "ffmpeg"
 
 from raaga_database import identify_raaga
-from swara_database import SWARA_FREQUENCIES, closest_swara
+from swara_database import (
+    SWARA_CENTS,
+    SWARA_FREQUENCIES,
+    closest_swara,
+    closest_swara_relative,
+)
 
 # pyin pitch-tracking bounds, spanning the three octaves of the swara database
 # (lower S = 155.56 Hz up through the tara-sthayi swaras).
@@ -102,6 +107,66 @@ def _probe_duration_seconds(filepath: str) -> float | None:
         return None
     hours, minutes, seconds = match.groups()
     return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+# Tonic (Sa) estimation. Carnatic music is sung in the performer's own key, so
+# the tonic must be found from the audio rather than assumed. We fold every
+# detected pitch into a one-octave pitch-class histogram; the strongest class is
+# taken as Sa (the note the melody and the tanpura drone centre on).
+_TONIC_HIST_BINS = 240  # 5-cent resolution over the octave
+_TONIC_SMOOTH_BINS = 3  # ~15-cent gaussian smoothing
+
+
+def _circular_smooth(hist: np.ndarray, sigma_bins: float) -> np.ndarray:
+    """Gaussian-smooth a circular (wrap-around) histogram."""
+    n = len(hist)
+    radius = max(1, int(3 * sigma_bins))
+    offsets = np.arange(-radius, radius + 1)
+    kernel = np.exp(-0.5 * (offsets / sigma_bins) ** 2)
+    kernel /= kernel.sum()
+    # np.convolve in 'same' mode is linear; emulate circular by tiling the ends.
+    padded = np.concatenate([hist[-radius:], hist, hist[:radius]])
+    return np.convolve(padded, kernel, mode="same")[radius : radius + n]
+
+
+def _confident_frequencies(f0, voiced_prob) -> list[float]:
+    """Frequencies of voiced, confident frames (drops NaN and low-probability)."""
+    return [
+        float(freq)
+        for freq, prob in zip(f0, voiced_prob)
+        if not np.isnan(freq) and prob >= VOICED_PROB_MIN
+    ]
+
+
+def _estimate_tonic_hz(frequencies) -> float | None:
+    """Estimate the tonic (Sa) in Hz from detected pitch frequencies.
+
+    Folds every pitch into a one-octave pitch-class histogram, smooths it, and
+    takes the strongest pitch class as Sa. The absolute Sa frequency is then the
+    octave of that pitch class where the most pitches actually sit (so the value
+    is a real frequency in the performer's range, suitable for display and for a
+    manual override). Returns ``None`` if there are no usable pitches.
+    """
+    freqs = np.asarray([f for f in frequencies if f and f > 0], dtype=float)
+    if freqs.size == 0:
+        return None
+
+    cents = 1200.0 * np.log2(freqs)
+    pitch_class = np.mod(cents, 1200.0)
+    hist, _edges = np.histogram(pitch_class, bins=_TONIC_HIST_BINS, range=(0.0, 1200.0))
+    hist = _circular_smooth(hist.astype(float), _TONIC_SMOOTH_BINS)
+    tonic_pc = (np.argmax(hist) + 0.5) * (1200.0 / _TONIC_HIST_BINS)
+
+    # Render the tonic pitch class at each octave in range and pick the one the
+    # performer actually dwells on (most pitches within ~a semitone of it), so Sa
+    # is reported in the register truly used, not an octave off.
+    lo = int(np.floor((cents.min() - tonic_pc) / 1200.0))
+    hi = int(np.ceil((cents.max() - tonic_pc) / 1200.0))
+    best_k = max(
+        range(lo, hi + 1),
+        key=lambda k: int(np.sum(np.abs(cents - (tonic_pc + 1200.0 * k)) <= 60.0)),
+    )
+    return float(2.0 ** ((tonic_pc + 1200.0 * best_k) / 1200.0))
 
 
 def _transcode_to_wav(filepath: str) -> str:
@@ -271,37 +336,43 @@ class AudioProcessor:
             "mfcc_means": mfccs.mean(axis=1).tolist(),
         }
 
-    def extract_swaras(self, filepath: str, debug: bool = False) -> dict:
+    def extract_swaras(
+        self, filepath: str, tonic_hz: float | None = None, debug: bool = False
+    ) -> dict:
         """Extract the swaras of a WAV, MP3, M4A, or MP4 file and identify raagas.
 
         Detects the distinct swaras present across the recording and runs them
-        through :func:`identify_raaga`. Returns both the detected swaras and the
-        top 3 raaga matches::
+        through :func:`identify_raaga`. Swaras are classified *relative to the
+        tonic* (Sa), since Carnatic music is performed in the singer's own key.
+        The tonic is estimated from the audio unless ``tonic_hz`` is supplied
+        (a user override). Returns::
 
-            {"swaras": [...], "raagas": [{...}, {...}, {...}]}
+            {"swaras": [...], "raagas": [...], "tonic_hz": 261.6}
 
-        Non-WAV inputs (MP3, M4A, MP4) are first transcoded to a temporary WAV
-        with the bundled imageio-ffmpeg binary before being passed to librosa;
+        Non-WAV inputs are transcoded to a temporary WAV inside the analysis;
         the temp file is removed once analysis completes.
 
         When ``debug`` is True, the raw dominant frequency of every analysis
         window (not just the surviving filtered list) is printed to stdout.
         """
-        analysis_path = filepath
-        temp_audio = None
-        if os.path.splitext(filepath)[1].lower() not in NATIVE_EXTENSIONS:
-            analysis_path = temp_audio = _transcode_to_wav(filepath)
+        times, f0, voiced_prob = self._analyze_pitch(filepath, debug=debug)
 
-        try:
-            swaras = self.detected_swaras(analysis_path, debug=debug)
-        finally:
-            if temp_audio:
-                _silent_remove(temp_audio)
+        if tonic_hz is None:
+            tonic_hz = _estimate_tonic_hz(_confident_frequencies(f0, voiced_prob))
+
+        swaras = self._swaras_from_track(times, f0, voiced_prob, tonic_hz, debug=debug)
 
         if debug:
-            print(f"[debug] final filtered swaras: {swaras}", flush=True)
+            print(
+                f"[debug] tonic (Sa) = {tonic_hz} Hz; final swaras: {swaras}",
+                flush=True,
+            )
 
-        return {"swaras": swaras, "raagas": identify_raaga(swaras, top_n=3)}
+        return {
+            "swaras": swaras,
+            "raagas": identify_raaga(swaras, top_n=3),
+            "tonic_hz": round(tonic_hz, 2) if tonic_hz else None,
+        }
 
     @staticmethod
     def fundamental_frequency(frequencies: list[float]) -> float | None:
@@ -310,11 +381,38 @@ class AudioProcessor:
             return None
         return float(np.median(frequencies))
 
+    def _swaras_from_track(
+        self,
+        times,
+        f0,
+        voiced_prob,
+        tonic_hz: float | None,
+        min_segment_frames: int = 5,
+        stability_cents: float = 60.0,
+        debug: bool = False,
+    ) -> list[str]:
+        """Segment a pitch track into notes and map them to distinct swaras.
+
+        With a ``tonic_hz`` each note is classified by its interval above Sa
+        (:func:`closest_swara_relative`) and the result is ordered by that
+        interval. Without one (tonic estimation failed) it falls back to the
+        fixed-tonic :func:`closest_swara`.
+        """
+        segments = self._segment_notes(
+            times, f0, voiced_prob, min_segment_frames, stability_cents, debug=debug
+        )
+        if tonic_hz:
+            swaras = {closest_swara_relative(hz, tonic_hz) for _s, _e, _n, hz in segments}
+            return sorted(swaras, key=lambda swara: SWARA_CENTS[swara])
+        swaras = {closest_swara(hz) for _s, _e, _n, hz in segments}
+        return sorted(swaras, key=lambda swara: SWARA_FREQUENCIES[swara])
+
     def detected_swaras(
         self,
         filepath: str,
         min_segment_frames: int = 5,
         stability_cents: float = 60.0,
+        tonic_hz: float | None = None,
         debug: bool = False,
     ) -> list[str]:
         """Return the distinct swaras present across a phrase, low to high.
@@ -324,15 +422,15 @@ class AudioProcessor:
         ``stability_cents`` of the running segment median). A run counts as a
         real note only if it spans at least ``min_segment_frames`` frames, which
         discards the pitch-glide frames between notes. Each segment's median
-        frequency is mapped to its closest swara.
+        frequency is mapped to its closest swara relative to the tonic (Sa),
+        which is estimated from the audio unless ``tonic_hz`` is given.
         """
         times, f0, voiced_prob = self._analyze_pitch(filepath, debug=debug)
-        segments = self._segment_notes(
-            times, f0, voiced_prob, min_segment_frames, stability_cents, debug=debug
+        if tonic_hz is None:
+            tonic_hz = _estimate_tonic_hz(_confident_frequencies(f0, voiced_prob))
+        return self._swaras_from_track(
+            times, f0, voiced_prob, tonic_hz, min_segment_frames, stability_cents, debug
         )
-
-        swaras = {closest_swara(median_hz) for _s, _e, _n, median_hz in segments}
-        return sorted(swaras, key=lambda swara: SWARA_FREQUENCIES[swara])
 
     def _segment_notes(
         self,

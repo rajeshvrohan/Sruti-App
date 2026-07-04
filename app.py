@@ -54,6 +54,30 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+# Plausible tonic (Sa) range in Hz: roughly the lowest bass to a high soprano.
+MIN_TONIC_HZ = 60.0
+MAX_TONIC_HZ = 600.0
+
+
+def parse_tonic(raw):
+    """Parse an optional user-supplied tonic (Sa) in Hz.
+
+    Returns ``None`` when blank/absent (auto-detect). Raises ``ValueError`` with
+    a user-facing message when the value is non-numeric or out of range.
+    """
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        tonic = float(raw)
+    except (TypeError, ValueError):
+        raise ValueError("Tonic (Sa) must be a number in Hz, or left blank.")
+    if not MIN_TONIC_HZ <= tonic <= MAX_TONIC_HZ:
+        raise ValueError(
+            f"Tonic (Sa) must be between {MIN_TONIC_HZ:.0f} and {MAX_TONIC_HZ:.0f} Hz."
+        )
+    return tonic
+
+
 # Enough to cover the furthest signature: the ISO-BMFF "ftyp" box at offset 4.
 _MAGIC_HEADER_BYTES = 16
 
@@ -177,8 +201,14 @@ def analyze():
                 }
             ), 400
 
+        # Optional user-supplied tonic (Sa) in Hz; blank means auto-detect.
         try:
-            result = processor.extract_swaras(filepath)
+            tonic_hz = parse_tonic(request.form.get("tonic"))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        try:
+            result = processor.extract_swaras(filepath, tonic_hz=tonic_hz)
         except FileNotFoundError:
             return jsonify(
                 {"error": "ffmpeg is required to process MP4 files but was not found on the server."}
@@ -204,6 +234,8 @@ def analyze():
                 "swaras": result["swaras"],
                 "raagas": raagas,
                 "analysis": analysis,
+                "tonic_hz": result.get("tonic_hz"),
+                "tonic_source": "manual" if tonic_hz else "auto",
             }
         )
     finally:

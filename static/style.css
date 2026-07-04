@@ -332,3 +332,39 @@ a:hover {
 .legal-list li {
     margin-bottom: 0.6rem;
 }
+
+/* Optional tonic (Sa) input */
+.tonic-area {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.tonic-label {
+    font-size: 0.85rem;
+    color: #5a4a32;
+}
+
+#tonic-input {
+    width: 100%;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid #c9b89a;
+    border-radius: 8px;
+    background-color: #fff;
+    font-size: 0.95rem;
+    color: #2c2416;
+}
+
+#tonic-input:focus {
+    outline: none;
+    border-color: #8b5e2e;
+}
+
+.tonic-text {
+    font-weight: 600;
+}
+
+.tonic-hint {
+    font-size: 0.82rem;
+    color: #9a8a72;
+}

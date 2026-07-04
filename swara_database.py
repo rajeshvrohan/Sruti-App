@@ -39,6 +39,35 @@ _ALL_OCTAVE_FREQUENCIES: list[tuple[str, float]] = [
 
 
 def closest_swara(frequency: float) -> str:
-    """Swara name (without octave) closest to `frequency`, matched across all three octaves."""
+    """Swara name (without octave) closest to `frequency`, matched across all three octaves.
+
+    NOTE: assumes the fixed absolute tonic :data:`SHADJA_HZ`. For real
+    recordings, which are in the performer's own key, use
+    :func:`closest_swara_relative` with an estimated/known tonic instead.
+    """
     name, _ = min(_ALL_OCTAVE_FREQUENCIES, key=lambda pair: abs(pair[1] - frequency))
     return name
+
+
+import math
+
+# Each swara's position in cents above Sa (from its Pythagorean ratio). Carnatic
+# swaras are intervals above the tonic, so classification must be relative.
+SWARA_CENTS: dict[str, float] = {
+    name: 1200.0 * math.log2(num / den) for name, (num, den) in _SWARA_RATIOS.items()
+}
+
+
+def closest_swara_relative(frequency: float, tonic_hz: float) -> str:
+    """Swara whose interval above the tonic is closest to ``frequency``'s.
+
+    Works in any key: ``frequency`` is expressed as cents above ``tonic_hz``
+    (the performer's Sa), folded into one octave, then matched to the nearest
+    swara position. This is the tonic-relative counterpart of
+    :func:`closest_swara`.
+    """
+    cents = (1200.0 * math.log2(frequency / tonic_hz)) % 1200.0
+    return min(
+        SWARA_CENTS,
+        key=lambda s: min(abs(cents - SWARA_CENTS[s]), 1200.0 - abs(cents - SWARA_CENTS[s])),
+    )
