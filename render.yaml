@@ -3,11 +3,15 @@ services:
     name: carnatic-app
     env: python
     buildCommand: pip install -r requirements.txt
-    # One worker keeps memory within the plan; the raised timeout is a safety
-    # net so a valid (windowed) analysis is never killed at gunicorn's 30s
-    # default. numba JIT is left enabled — the windowed analysis bounds memory,
-    # so JIT's speed is a net win and no longer risks an out-of-memory crash.
+    # One worker keeps memory within the 512MB plan; the raised timeout is a
+    # safety net so a valid (windowed) analysis is never killed at gunicorn's
+    # 30s default.
     startCommand: gunicorn app:app --workers 1 --timeout 120
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
+      # The cold numba JIT compile spikes memory enough to OOM-kill the worker
+      # on this plan; disable it. Windowed analysis keeps the JIT-off path fast
+      # enough. Mirrors the in-code setting in audio_processor.py.
+      - key: NUMBA_DISABLE_JIT
+        value: "1"

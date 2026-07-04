@@ -1,4 +1,12 @@
 import os
+
+# Must be set before librosa imports numba. On the 512MB Render plan the cold
+# numba JIT compile (LLVM) spikes RSS enough to get the worker OOM-killed
+# (gunicorn logs "SIGKILL! Perhaps out of memory?"). Windowed analysis keeps
+# the interpreted (JIT-off) path fast enough, so disabling JIT trades a little
+# CPU for staying inside the memory limit. Do not re-enable on this plan.
+os.environ["NUMBA_DISABLE_JIT"] = "1"
+
 import re
 import subprocess
 import tempfile
@@ -363,28 +371,66 @@ class AudioProcessor:
 
         return segments
 
+    def _read_analysis_windows(self, filepath: str):
+        """Yield ``(signal, sr, start_seconds)`` for each sampled window.
+
+        Reads only the sampled windows straight from the file with soundfile
+        (seeking, never loading the whole recording) and resamples just that
+        ~12s chunk to :data:`ANALYSIS_SAMPLE_RATE`. Non-native inputs are
+        transcoded to a temporary WAV once first. This bounds peak memory to a
+        single window regardless of song length — a full-signal load and
+        resample would OOM the 512MB instance on a ~6-minute upload.
+        """
+        analysis_path = filepath
+        temp_audio = None
+        if os.path.splitext(filepath)[1].lower() not in NATIVE_EXTENSIONS:
+            analysis_path = temp_audio = _transcode_to_wav(filepath)
+        try:
+            info = sf.info(analysis_path)
+            for start, end in _analysis_windows(info.frames, info.samplerate):
+                seg, sr = sf.read(
+                    analysis_path, start=start, stop=end,
+                    dtype="float32", always_2d=False,
+                )
+                if seg.ndim > 1:
+                    seg = seg.mean(axis=1)
+                if sr != ANALYSIS_SAMPLE_RATE:
+                    seg = librosa.resample(
+                        seg, orig_sr=sr, target_sr=ANALYSIS_SAMPLE_RATE
+                    )
+                yield (
+                    np.ascontiguousarray(seg, dtype=np.float32),
+                    ANALYSIS_SAMPLE_RATE,
+                    start / info.samplerate,
+                )
+        finally:
+            if temp_audio:
+                _silent_remove(temp_audio)
+
     def _analyze_pitch(self, filepath: str, debug: bool = False):
         """Run pYIN and return ``(times, f0, voiced_prob)`` arrays.
 
         pYIN tracks the fundamental directly instead of taking the loudest
         spectral bin, so overtones do not masquerade as the pitch. To keep time
         and memory bounded on long recordings, pYIN is run only on the sampled
-        windows from :func:`_analysis_windows` rather than the whole signal;
-        the per-window frame tracks are concatenated (with a NaN separator so a
-        note cannot be merged across the gap between two windows). When
-        ``debug`` is True, the raw pYIN result for *every* analysis frame is
-        printed — including the unvoiced/low-confidence frames later steps drop.
+        windows from :meth:`_read_analysis_windows` rather than the whole
+        signal; the per-window frame tracks are concatenated (with a NaN
+        separator so a note cannot be merged across the gap between two
+        windows). When ``debug`` is True, the raw pYIN result for *every*
+        analysis frame is printed — including the unvoiced/low-confidence frames
+        later steps drop.
         """
-        y, sr = self._load_audio(filepath)
-        windows = _analysis_windows(len(y), sr)
-
         times_parts, f0_parts, prob_parts = [], [], []
-        for i, (start, end) in enumerate(windows):
+        window_count = 0
+        analysed_seconds = 0.0
+        for seg, sr, start_seconds in self._read_analysis_windows(filepath):
+            window_count += 1
+            analysed_seconds += len(seg) / sr
             f0_w, _voiced_flag, prob_w = librosa.pyin(
-                y[start:end], fmin=FREQ_MIN, fmax=FREQ_MAX, sr=sr
+                seg, fmin=FREQ_MIN, fmax=FREQ_MAX, sr=sr
             )
-            times_w = librosa.times_like(f0_w, sr=sr) + start / sr
-            if i > 0:
+            times_w = librosa.times_like(f0_w, sr=sr) + start_seconds
+            if window_count > 1:
                 # NaN separator closes any open note at the window boundary.
                 times_parts.append(times_w[:1])
                 f0_parts.append(np.array([np.nan], dtype=f0_w.dtype))
@@ -399,8 +445,8 @@ class AudioProcessor:
 
         if debug:
             print(
-                f"[debug] analysed {len(windows)} window(s) spanning the "
-                f"recording ({sum(e - s for s, e in windows) / sr:.1f}s of audio)",
+                f"[debug] analysed {window_count} window(s) spanning the "
+                f"recording ({analysed_seconds:.1f}s of audio)",
                 flush=True,
             )
             print(
