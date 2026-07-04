@@ -1,11 +1,4 @@
 import os
-
-# Must be set before librosa (and its numba-backed deps) are imported;
-# once numba initializes, toggling this env var has no effect. Disables
-# numba JIT compilation, which spikes memory on startup and triggers
-# out-of-memory crashes on Render's constrained instances.
-os.environ["NUMBA_DISABLE_JIT"] = "1"
-
 import re
 import subprocess
 import tempfile
@@ -45,6 +38,33 @@ NATIVE_EXTENSIONS = {".wav"}
 # min_segment_frames note-length threshold — depends on it, so keep it fixed
 # regardless of the source file's native rate.
 ANALYSIS_SAMPLE_RATE = 22050
+
+# pyin's time and memory both grow linearly with signal length, so a full song
+# (~6 min) would OOM the instance and blow the request timeout. Instead of
+# grinding the whole recording, sample a few short windows spread across it and
+# union their swaras — a raaga's swara vocabulary recurs throughout the piece,
+# so this captures it at a fraction of the cost and with bounded memory. A clip
+# shorter than one window is analysed whole, exactly as before.
+ANALYSIS_WINDOW_SECONDS = 12.0
+ANALYSIS_MAX_WINDOWS = 5
+
+
+def _analysis_windows(n_samples: int, sr: int) -> list[tuple[int, int]]:
+    """Return ``(start, end)`` sample ranges to run pitch detection on.
+
+    Short signals yield a single whole-signal window (preserving the original
+    behaviour). Longer signals yield up to :data:`ANALYSIS_MAX_WINDOWS`
+    non-overlapping windows spaced evenly from the start to the end of the
+    recording, so the sampled swaras cover the whole piece.
+    """
+    win = int(ANALYSIS_WINDOW_SECONDS * sr)
+    if n_samples <= win:
+        return [(0, n_samples)]
+    count = min(ANALYSIS_MAX_WINDOWS, n_samples // win)
+    if count <= 1:
+        return [(0, win)]
+    stride = (n_samples - win) / (count - 1)
+    return [(round(i * stride), round(i * stride) + win) for i in range(count)]
 
 # Reject inputs longer than this before spending CPU transcoding them. An
 # overlong clip is what pins the ffmpeg subprocess long enough to trip the
@@ -347,19 +367,42 @@ class AudioProcessor:
         """Run pYIN and return ``(times, f0, voiced_prob)`` arrays.
 
         pYIN tracks the fundamental directly instead of taking the loudest
-        spectral bin, so overtones do not masquerade as the pitch. When
-        ``debug`` is True, the raw pYIN result for *every* analysis window is
-        printed — including the unvoiced/low-confidence frames later steps drop —
-        so the full pitch track is visible.
+        spectral bin, so overtones do not masquerade as the pitch. To keep time
+        and memory bounded on long recordings, pYIN is run only on the sampled
+        windows from :func:`_analysis_windows` rather than the whole signal;
+        the per-window frame tracks are concatenated (with a NaN separator so a
+        note cannot be merged across the gap between two windows). When
+        ``debug`` is True, the raw pYIN result for *every* analysis frame is
+        printed — including the unvoiced/low-confidence frames later steps drop.
         """
         y, sr = self._load_audio(filepath)
+        windows = _analysis_windows(len(y), sr)
 
-        f0, _voiced_flag, voiced_prob = librosa.pyin(
-            y, fmin=FREQ_MIN, fmax=FREQ_MAX, sr=sr
-        )
-        times = librosa.times_like(f0, sr=sr)
+        times_parts, f0_parts, prob_parts = [], [], []
+        for i, (start, end) in enumerate(windows):
+            f0_w, _voiced_flag, prob_w = librosa.pyin(
+                y[start:end], fmin=FREQ_MIN, fmax=FREQ_MAX, sr=sr
+            )
+            times_w = librosa.times_like(f0_w, sr=sr) + start / sr
+            if i > 0:
+                # NaN separator closes any open note at the window boundary.
+                times_parts.append(times_w[:1])
+                f0_parts.append(np.array([np.nan], dtype=f0_w.dtype))
+                prob_parts.append(np.array([0.0], dtype=prob_w.dtype))
+            times_parts.append(times_w)
+            f0_parts.append(f0_w)
+            prob_parts.append(prob_w)
+
+        times = np.concatenate(times_parts)
+        f0 = np.concatenate(f0_parts)
+        voiced_prob = np.concatenate(prob_parts)
 
         if debug:
+            print(
+                f"[debug] analysed {len(windows)} window(s) spanning the "
+                f"recording ({sum(e - s for s, e in windows) / sr:.1f}s of audio)",
+                flush=True,
+            )
             print(
                 f"[debug] raw dominant frequency per time window "
                 f"({len(f0)} windows):",
