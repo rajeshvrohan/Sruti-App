@@ -67,3 +67,14 @@ python identify_raaga.py path/to/recording.wav
 
 The analysis is for educational purposes only. It is not medical or
 therapeutic advice. Only upload recordings you own or have the rights to.
+
+## License
+
+Released under the [MIT License](LICENSE).
+
+## Credits
+
+`Local Forecast - Elevator.mp3` — "Local Forecast - Elevator" by Kevin
+MacLeod ([incompetech.com](https://incompetech.com)), licensed under
+[Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/).
+Used as a sample input for testing.
