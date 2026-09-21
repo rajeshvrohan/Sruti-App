@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}About &mdash; Carnatic Music Analyzer{% endblock %}
+
+{% block content %}
+    <main class="container">
+        <h1>About Sruti</h1>
+        <p class="subtitle">What this analyzer does, and how it works.</p>
+
+        <section class="privacy-content">
+            <h2>What it is</h2>
+            <p>
+                Sruti is a Carnatic music analyzer. Upload a recording and it
+                listens for the pitches you sang or played, works out which
+                swaras those are relative to your Sa, and ranks the raagas
+                whose scale best fits what it heard. It then generates a
+                short educational write-up of the top candidate.
+            </p>
+
+            <h2>How it works</h2>
+            <p>
+                The audio is decoded and pitch-tracked with
+                <a href="https://librosa.org" target="_blank" rel="noopener">librosa</a>.
+                Detected pitches are folded against your tonic (Sa) — either
+                the value you set in Hz, or one detected automatically from
+                the recording — and grouped into the twelve semitone swara
+                positions used in Carnatic notation.
+            </p>
+            <p>
+                Those swaras are matched against a database of common raagas.
+                A raaga is ranked by how well its arohana and avarohana cover
+                the swaras heard, penalising both scale swaras you did not
+                sing and detected swaras the raaga cannot explain. The top
+                match is sent to the Anthropic Claude API to generate a short,
+                plain-English description.
+            </p>
+
+            <h2>Getting good results</h2>
+            <p>
+                Cleaner input helps. A solo voice or single instrument in a
+                quiet room, holding each swara long enough to be tracked,
+                works best. Backing tanpura is fine.
+            </p>
+            <p>
+                If the detected raaga looks off, the tonic is usually the
+                cause. Set your Sa explicitly in the tonic field — the note
+                picker converts a note name to Hz — and re-analyze.
+            </p>
+
+            <h2>What it is not</h2>
+            <p>
+                Sruti is a teaching aid, not a musicologist. It ranks
+                candidates from a fixed database of scales, so a rare or
+                regional raaga may not appear, and short or ornament-heavy
+                passages can favour a parent scale over its derivative. The
+                generated analysis is AI-written and can be wrong. It is not
+                medical or therapeutic advice.
+            </p>
+
+            <h2>Privacy</h2>
+            <p>
+                Uploaded audio is deleted immediately after analysis, whether
+                it succeeds or fails. No recordings are stored, and no
+                account is required. See the
+                <a href="{{ url_for('privacy') }}">Privacy &amp; Data</a>
+                page for the full details.
+            </p>
+        </section>
+
+        <footer class="disclaimer">
+            <a href="{{ url_for('index') }}">&larr; Back to the analyzer</a>
+        </footer>
+    </main>
+{% endblock %}
